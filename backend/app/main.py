@@ -1,12 +1,43 @@
 import asyncio
+import json
+from contextlib import suppress
 import httpx
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from .core import COLLECTION, QDRANT, ProviderError, request
 from .chat import ChatRequest, ChatResponse, answer_question
 
-app = FastAPI(title="Fjara", description="Icelandic accounting knowledge service", version="0.2.0")
+app = FastAPI(title="Fjara", description="Icelandic accounting knowledge service", version="0.3.0")
+
+
+def event(name, data):
+    return f"event: {name}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+@app.post("/chat/stream")
+async def stream_chat(body: ChatRequest):
+    async def stream():
+        task = asyncio.create_task(chat(body))
+        try:
+            yield event("status", {"message": "Searching sources and preparing a verified answer…"})
+            while not task.done():
+                done, _ = await asyncio.wait({task}, timeout=5)
+                if not done:
+                    yield ": keepalive\n\n"
+            result = await task
+            # Never expose unvalidated model tokens. Publish only the checked answer.
+            yield event("answer", result.model_dump())
+            yield event("done", {})
+        except HTTPException as exc:
+            yield event("error", {"message": exc.detail, "status": exc.status_code})
+        finally:
+            if not task.done():
+                task.cancel()
+            with suppress(asyncio.CancelledError, Exception):
+                await task
+    return StreamingResponse(stream(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"})
 
 
 @app.post("/chat", response_model=ChatResponse)

@@ -2,9 +2,31 @@
 
 Icelandic accounting and tax question answering, following the supplied four-week roadmap.
 
-## Current milestone: Week 2 complete
+## Current milestone: Week 3 implemented; Docker verification pending
 
-Implemented: FastAPI health/readiness endpoints, Docker Compose with persistent Qdrant storage, bounded Firecrawl → Markdown → Gemini embeddings → Qdrant ingestion, and a single-turn `/chat` endpoint. Streaming, Next.js, and deployment belong to subsequent milestones.
+Implemented: FastAPI health/readiness endpoints, persistent Qdrant storage, bounded Firecrawl → Gemini → Qdrant ingestion, grounded question answering, and a responsive Next.js chat interface with citations and progress streaming. Deployment and production hardening belong to Week 4.
+
+## Browser interface
+
+Run `docker compose up -d --build` and open http://localhost:3000. The frontend proxies same-origin `/api/chat` requests to the backend; provider keys remain on the backend. `BACKEND_URL` is a server-only setting, defaulting to `http://127.0.0.1:8000` for local frontend development and `http://backend:8000` in Compose.
+
+The interface includes suggested questions, English/Icelandic answer selection, clickable citation references, expandable supporting quotes and crawl dates, retry, cancellation, and a new-conversation button. History is held only in the current tab's memory and disappears on reload; each question remains independent.
+
+`POST /chat/stream` uses server-sent events over a POST request: `status`, `answer`, `done`, or `error`. The stream starts immediately and sends periodic keepalive comments. Answer text is deliberately buffered until citation validation completes, then sent as one verified answer event; this is progress streaming, not unchecked token-by-token output. Disconnecting cancels pending backend work, although providers may still charge for work already started. The existing JSON `/chat` endpoint remains available.
+
+For local frontend development:
+
+```powershell
+cd frontend
+npm ci
+npm run dev
+```
+
+Frontend checks: `npm test`, `npm run typecheck`, and `npm run build`. Backend tests run from `backend/` with `..\.venv\Scripts\python.exe -m unittest discover -s tests -q`.
+
+Browser checks: start the local frontend on port 3001 (`npm run dev -- --port 3001`), then run `npm run test:browser`. The test uses installed Microsoft Edge by default, mocks answer responses, and saves ignored screenshots under `frontend/test-results/`. Set `FRONTEND_URL` and `BROWSER_CHANNEL` to override the URL or browser channel.
+
+The optional local proxy test uses fixture answers rather than provider APIs: run `python -m tests.serve_fixture` from `backend/`, then `node tests/proxy.mjs` from `frontend/`. Stop the fixture server after the test; it binds port 8000 and must not run alongside the actual backend.
 
 ## Ask a question
 
@@ -80,10 +102,22 @@ References: [Firecrawl scrape API](https://docs.firecrawl.dev/api-reference/endp
 
 - Week 1 complete: all five pages indexed and `/ready` reports 60 chunks.
 - Week 2 complete: `/chat`, retrieval, generated answers, verified citation provenance, abstention, 20 passing local tests, and five passing Docker-based end-to-end smoke cases.
-- Week 3: Next.js interface, streaming, and clickable citations.
+- Week 3 implemented: responsive Next.js interface, validated-answer progress streaming, clickable citations, and Docker frontend configuration. Local browser and proxy checks pass; the full Docker run remains pending recovery of Docker Desktop.
 - Week 4: retries, rate limits, authentication before public exposure, evaluation, scheduled refresh, and deployment.
 
 This development stack binds only to localhost. It is not a public production deployment.
+
+## Week 3 verification on 2026-09-28
+
+- 23 backend tests and three frontend stream-parser tests pass.
+- The Next.js production build, including TypeScript checking, passes.
+- Automated Microsoft Edge checks pass at desktop (1440 × 1000) and mobile (390 × 844) sizes: question input, language selection, source quotes/links, abstention, retry, cancellation, new conversation, HTTP errors, and stream errors. No browser exceptions or horizontal overflow were observed. Answer responses in these browser tests are fixtures.
+- The real Next.js server proxy successfully forwarded FastAPI SSE status/answer/done events, citation data, quota errors, and input-validation errors using a local fixture backend. The fixture was stopped after testing.
+- Docker Desktop again failed to start because of its `sailor-ingest.sock` error. Per the user's direction, testing continued locally. The new frontend container and integrated live Gemini path have not been verified in Docker yet; run `docker compose up -d --build` after Docker recovers, then test a question at http://localhost:3000.
+
+## Version control
+
+The Week 1–2 baseline is on `codex/week-1-2-baseline`. Week 3 work is on `codex/week-3-chat-ui`. Future changes should use a new `codex/` branch, be committed after relevant checks, and be pushed to the GitHub remote. Secrets, downloaded data, and test screenshots stay ignored.
 
 ## Verification on 2026-09-28
 
