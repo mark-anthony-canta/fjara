@@ -2,7 +2,7 @@
 
 Icelandic accounting and tax question answering, following the supplied four-week roadmap.
 
-## Current milestone: Week 3 implemented; Docker verification pending
+## Current milestone: Week 3 complete
 
 Implemented: FastAPI health/readiness endpoints, persistent Qdrant storage, bounded Firecrawl → Gemini → Qdrant ingestion, grounded question answering, and a responsive Next.js chat interface with citations and progress streaming. Deployment and production hardening belong to Week 4.
 
@@ -25,6 +25,8 @@ npm run dev
 Frontend checks: `npm test`, `npm run typecheck`, and `npm run build`. Backend tests run from `backend/` with `..\.venv\Scripts\python.exe -m unittest discover -s tests -q`.
 
 Browser checks: start the local frontend on port 3001 (`npm run dev -- --port 3001`), then run `npm run test:browser`. The test uses installed Microsoft Edge by default, mocks answer responses, and saves ignored screenshots under `frontend/test-results/`. Set `FRONTEND_URL` and `BROWSER_CHANNEL` to override the URL or browser channel.
+
+Live Docker acceptance: with the Compose stack running, execute `node tests/live.mjs` from `frontend/`. It uses three real Gemini requests through port 3000, checks English SSE event order, an Icelandic browser answer with source expansion and mobile layout, and unrelated-question abstention. It saves screenshots and `test-results/live-report.json`. These requests consume API credits; the browser interaction suite above uses mocked answers.
 
 The optional local proxy test uses fixture answers rather than provider APIs: run `python -m tests.serve_fixture` from `backend/`, then `node tests/proxy.mjs` from `frontend/`. Stop the fixture server after the test; it binds port 8000 and must not run alongside the actual backend.
 
@@ -102,7 +104,7 @@ References: [Firecrawl scrape API](https://docs.firecrawl.dev/api-reference/endp
 
 - Week 1 complete: all five pages indexed and `/ready` reports 60 chunks.
 - Week 2 complete: `/chat`, retrieval, generated answers, verified citation provenance, abstention, 20 passing local tests, and five passing Docker-based end-to-end smoke cases.
-- Week 3 implemented: responsive Next.js interface, validated-answer progress streaming, clickable citations, and Docker frontend configuration. Local browser and proxy checks pass; the full Docker run remains pending recovery of Docker Desktop.
+- Week 3 complete: responsive Next.js interface, validated-answer progress streaming, clickable citations, Docker frontend, and passing local plus live Docker browser/proxy checks.
 - Week 4: retries, rate limits, authentication before public exposure, evaluation, scheduled refresh, and deployment.
 
 This development stack binds only to localhost. It is not a public production deployment.
@@ -113,11 +115,11 @@ This development stack binds only to localhost. It is not a public production de
 - The Next.js production build, including TypeScript checking, passes.
 - Automated Microsoft Edge checks pass at desktop (1440 × 1000) and mobile (390 × 844) sizes: question input, language selection, source quotes/links, abstention, retry, cancellation, new conversation, HTTP errors, and stream errors. No browser exceptions or horizontal overflow were observed. Answer responses in these browser tests are fixtures.
 - The real Next.js server proxy successfully forwarded FastAPI SSE status/answer/done events, citation data, quota errors, and input-validation errors using a local fixture backend. The fixture was stopped after testing.
-- Docker Desktop again failed to start because of its `sailor-ingest.sock` error. Per the user's direction, testing continued locally. The new frontend container and integrated live Gemini path have not been verified in Docker yet; run `docker compose up -d --build` after Docker recovers, then test a question at http://localhost:3000.
+- After Docker Desktop recovered, `docker compose up -d --build` successfully built and started the production frontend with FastAPI and Qdrant. `/ready` reported 60 chunks. Live requests traversed the frontend proxy, backend, Qdrant, and Gemini without fixtures. English progress arrived in 188 ms and the validated answer in 3,149 ms in this sample; these are observed timings, not a latency guarantee. The Icelandic browser answer displayed both VAT rates with expandable official citations; unrelated questions abstained. Desktop/mobile interaction tests also passed against the Docker-served frontend with mocked responses for deterministic error and cancellation scenarios. No browser exceptions or horizontal overflow were observed.
 
 ## Version control
 
-The Week 1–2 baseline is on `codex/week-1-2-baseline`. Week 3 work is on `codex/week-3-chat-ui`. Future changes should use a new `codex/` branch, be committed after relevant checks, and be pushed to the GitHub remote. Secrets, downloaded data, and test screenshots stay ignored.
+The Week 1–2 baseline is on `codex/week-1-2-baseline`. Week 3 implementation is on `codex/week-3-chat-ui`; its Docker acceptance checks and completion notes are on `codex/week-3-docker-verification`. Future changes should use a new `codex/` branch, be committed after relevant checks, and be pushed to the GitHub remote. Secrets, downloaded data, and test screenshots stay ignored.
 
 ## Verification on 2026-09-28
 
