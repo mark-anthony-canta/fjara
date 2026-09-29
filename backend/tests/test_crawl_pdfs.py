@@ -54,3 +54,19 @@ class BatchBudgetTests(unittest.TestCase):
         self.assertEqual(select_group(manifest,ledger,1),([],1))
         ledger['reserved']=0
         self.assertEqual(select_group(manifest,ledger,900),(['a','b'],1))
+
+class SettlementTests(unittest.TestCase):
+    def test_verified_charges_release_only_completed_allowances(self):
+        from app.crawl_pdfs_batch import settle_completed
+        ledger={'initial_balance':100,'reserved':7,'attempts':{'a':{'status':'extracted','reserved':5,'reported_credits':4},'b':{'status':'failed','reserved':2}}}
+        settle_completed(ledger,96)
+        self.assertEqual(ledger['reserved'],6)
+        self.assertEqual(ledger['attempts']['b']['reserved'],2)
+        settle_completed(ledger,96)
+        self.assertEqual(ledger['reserved'],6)
+
+    def test_unreconciled_account_usage_blocks_release(self):
+        from app.crawl_pdfs_batch import settle_completed
+        ledger={'initial_balance':100,'reserved':5,'attempts':{'a':{'status':'extracted','reserved':5,'reported_credits':4}}}
+        with self.assertRaises(ValueError): settle_completed(ledger,90)
+        self.assertEqual(ledger['reserved'],5)

@@ -21,7 +21,23 @@ def select_group(manifest, ledger, available):
     return [u for u,p in pending if p==pages][:count],pages
 
 
-async def run():
+def settle_completed(ledger, current_balance):
+    if ledger.get('active_batch'):
+        raise ValueError('Finish the active batch before reconciling credits')
+    completed = [e for e in ledger['attempts'].values() if e['status'] == 'extracted']
+    if any(type(e.get('reported_credits')) is not int or not 0 <= e['reported_credits'] <= e['reserved'] for e in completed):
+        raise ValueError('Cannot reconcile unverified provider charges')
+    confirmed = sum(e['reported_credits'] for e in completed)
+    if ledger['initial_balance'] - current_balance != confirmed:
+        raise ValueError('Account usage does not match confirmed extraction charges')
+    for entry in completed:
+        entry.setdefault('original_reservation', entry['reserved'])
+        entry['reserved'] = entry['reported_credits']
+    ledger['reserved'] = sum(e['reserved'] for e in ledger['attempts'].values())
+    ledger['last_balance'] = current_balance
+
+
+async def run(settle=False):
     manifest=json.loads((ROOT/'manifest.json').read_text(encoding='utf-8'))
     ledger_path=ROOT/'ledger.json'
     ledger=json.loads(ledger_path.read_text(encoding='utf-8'))
@@ -33,6 +49,9 @@ async def run():
             r=await client.get(url,headers=headers); r.raise_for_status(); return r.json()
         async def balance():
             return int((await get('https://api.firecrawl.dev/v2/team/credit-usage'))['data']['remainingCredits'])
+        if settle:
+            settle_completed(ledger, await balance())
+            save(ledger_path, ledger)
         while True:
             active=ledger.get('active_batch')
             if not active:
@@ -85,7 +104,11 @@ async def run():
         print(f'Finished budgeted batches; reserved {ledger["reserved"]}, balance {ledger["last_balance"]}',flush=True)
 
 if __name__=='__main__':
-    try: asyncio.run(run())
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--settle', action='store_true', help='Reconcile completed charges against the live balance before continuing')
+    args = parser.parse_args()
+    try: asyncio.run(run(args.settle))
     except Exception as exc:
         print(f'Stopped: {type(exc).__name__}; saved batch can be resumed without resubmission.')
         raise SystemExit(1)
