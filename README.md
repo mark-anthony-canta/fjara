@@ -130,3 +130,22 @@ The full Docker-based `/chat` evaluation passed all five cases with HTTP 200 aft
 ## Verification on 2026-09-24
 
 Eight local tests passed (chunking, source restrictions, health/readiness, and sanitized provider errors). Docker images built successfully and FastAPI plus Qdrant are running locally. Live Firecrawl extraction and Gemini embedding succeeded for all five sources, yielding 60 stored chunks. An initial provider failure after three sources was recovered by resuming at offset 3. `/ready` returned HTTP 200 with 60 chunks. A live retrieval-query embedding for an Icelandic VAT question returned the official VAT page for all three top results. The configured generation model's metadata endpoint returned HTTP 200 and confirmed `generateContent` support; answer generation itself is not implemented or tested yet. Changes are local and have not been pushed to GitHub.
+
+## Import an existing Firecrawl crawl
+
+The app uses Firecrawl for ingestion, then answers from Qdrant; it does not browse the entire website for each question. A completed crawl in the Firecrawl dashboard is not automatically indexed.
+
+From `backend/`, preview a completed crawl or saved JSON export:
+
+```powershell
+..\.venv\Scripts\python.exe -m app.import_crawl --crawl-id 01a0e6ca-cf71-70dd-8071-cb8cab0fad31
+..\.venv\Scripts\python.exe -m app.import_crawl --file data/firecrawl-crawl-first-page.json
+```
+
+Add `--index` to generate embeddings and store the pages in the configured Qdrant collection. Keep Docker running. Downloading an existing job does not start a new crawl. The job response is archived under ignored `backend/data/`; use the saved file after Firecrawl results expire. Exports without `createdAt` need `--crawled-at` with an ISO timestamp and timezone.
+
+The importer follows validated Firecrawl pagination, accepts only approved Skatturinn pages, removes observed repeated navigation menus, and skips failed/empty/duplicate pages. It retries transient provider failures and can be resumed with the same command without embedding completed unchanged pages again. Each page is embedded and upserted before old versions are removed. Crawl timestamps represent the job start, not the publication date. Changing embedding models still requires a separate collection and full reindex.
+
+The supplied job contains **10 pages**, not the full website, yielding 37 cleaned chunks. Additional source coverage needs a separate reviewed crawl. The supplied VR membership question returns `insufficient_evidence`; the app must not invent union-specific percentages from general tax excerpts. A live tax-residency question successfully retrieves and cites the newly imported official tax-liability article. Local backend validation passes 29 tests, including pagination, source filtering, menu removal, failure preservation, and import resumption.
+
+Import verification: all ten pages completed after resuming a transient Gemini HTTP 429. `/ready` reports 97 chunks, and a Qdrant payload check confirms 15 distinct source URLs. Existing 60 chunks were retained. No new Firecrawl crawl was started.
