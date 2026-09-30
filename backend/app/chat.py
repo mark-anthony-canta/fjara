@@ -83,6 +83,10 @@ MAX_CLAIMS = 6
 MAX_EVIDENCE = 3
 MIN_QUOTE, MAX_QUOTE = 15, 1000
 MIN_CONTENT_CHARS = 20
+# Annual car tax-valuation lists (RSK 6.03, 1998-2016) stay indexed but are excluded
+# from answers as out of scope. Remove this list to make them searchable again.
+EXCLUDED_SOURCES = tuple(f"https://www.skatturinn.is/media/baeklingar/rsk_0603_{year}.is.pdf"
+                         for year in range(1998, 2017))
 IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
 LINK = re.compile(r"\[([^\]]*)\]\([^)\s]*(?:\s+\"[^\"]*\")?\)")
 NAV_LINE = re.compile(r"^\s*(?:[-*+]\s+)?\[[^\]]*\]\([^)]*\)\s*$")
@@ -174,7 +178,8 @@ async def answer_question(body: ChatRequest) -> ChatResponse:
         vector = await embed(client, body.question, task="RETRIEVAL_QUERY")
         result = await request(client, "POST", f"{QDRANT}/collections/{COLLECTION}/points/query",
             json={"query": vector, "limit": RETRIEVAL_CANDIDATES, "with_payload": True,
-                  "score_threshold": float(os.getenv("RETRIEVAL_MIN_SCORE", DEFAULT_MIN_SCORE))})
+                  "score_threshold": float(os.getenv("RETRIEVAL_MIN_SCORE", DEFAULT_MIN_SCORE)),
+                  "filter": {"must_not": [{"key": "url", "match": {"any": list(EXCLUDED_SOURCES)}}]}})
         sources = []
         seen = set()
         for hit in result["result"]["points"]:
@@ -182,6 +187,8 @@ async def answer_question(body: ChatRequest) -> ChatResponse:
             try:
                 validate_source(payload["url"])
             except ValueError:
+                continue
+            if payload["url"] in EXCLUDED_SOURCES:
                 continue
             text = clean_source(payload["text"])[:2400]
             identity = (payload["url"], text)

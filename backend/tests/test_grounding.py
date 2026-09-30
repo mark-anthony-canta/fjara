@@ -2,8 +2,8 @@ import json
 import unittest
 from unittest.mock import AsyncMock, patch
 
-from app.chat import (ChatRequest, ParsedDraft, answer_question, clean_source, has_content,
-                      validate_draft)
+from app.chat import (EXCLUDED_SOURCES, ChatRequest, ParsedDraft, answer_question, clean_source,
+                      has_content, validate_draft)
 
 URL = "https://www.skatturinn.is/english/individuals/filing-a-tax-return"
 PAGE = """# Filing a tax return
@@ -117,6 +117,19 @@ class RetrievalFilterTests(unittest.IsolatedAsyncioTestCase):
             result = await answer_question(ChatRequest(question="How do I file?"))
         self.assertEqual(result.status, "answered")
         self.assertEqual(len(result.citations), 1)
+
+
+class ExcludedSourceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_car_valuation_lists_are_filtered_and_skipped(self):
+        self.assertEqual(len(EXCLUDED_SOURCES), 19)
+        car = source(url="https://www.skatturinn.is/media/baeklingar/rsk_0603_2010.is.pdf")
+        with patch("app.chat.embed", AsyncMock(return_value=[0.1])), patch(
+                "app.chat.request", AsyncMock(return_value={"result": {"points": [{"payload": car}]}})) as req:
+            result = await answer_question(ChatRequest(question="Land Cruiser 2010 valuation?"))
+        self.assertEqual(result.status, "insufficient_evidence")
+        self.assertEqual(req.await_count, 1)
+        excluded = req.call_args.kwargs["json"]["filter"]["must_not"][0]["match"]["any"]
+        self.assertIn(car["url"], excluded)
 
 
 if __name__ == "__main__":
