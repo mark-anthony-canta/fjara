@@ -41,7 +41,7 @@ Invoke-RestMethod http://localhost:8000/chat -Method Post -ContentType 'applicat
 
 Use `language: "is"` for Icelandic responses. Each question is independent; conversation history is not supported yet. Questions are limited to 2,000 characters. Each request uses one query embedding and, when relevant excerpts are found, one generation call.
 
-The response contains `answer`, `status` (`answered` or `insufficient_evidence`), and `citations` with source URLs, exact supporting quotes, and crawl timestamps. The server verifies quote presence and source identifiers before returning citations. This checks provenance, not semantic entailment: a valid quote alone cannot guarantee that every generated claim is correct. The corpus is a dated snapshot of five English pages; it does not cover all Icelandic tax topics or guarantee current rules.
+The response contains `answer`, `status` (`answered` or `insufficient_evidence`), and `citations` with source URLs, exact supporting quotes, and crawl timestamps. The server verifies quote presence and source identifiers before returning citations. Each claim is checked separately: a claim is kept only if every one of its quotes appears verbatim in its cited excerpt, and unsupported claims are dropped rather than discarding the whole answer. The response abstains only when no claim survives. This checks provenance, not semantic entailment: a valid quote alone cannot guarantee that every generated claim is correct. The corpus is a dated snapshot of five English pages; it does not cover all Icelandic tax topics or guarantee current rules.
 
 Retrieval selects at most five chunks using the same embedding model with `RETRIEVAL_QUERY`. `RETRIEVAL_MIN_SCORE` defaults to `0.55`; this is an initial heuristic, not a calibrated confidence probability. Insufficient evidence yields an abstention. Invalid provider responses return 502, unavailable services 503, timeouts 504, and provider quota limits 429. Errors exclude credentials and provider response bodies.
 
@@ -184,3 +184,17 @@ From `backend/`, the extracted PDFs are indexed with:
 Status: 161 of 163 extracted PDFs are indexed. Documents already stored with a matching URL, content hash, import version, and embedding model are reported as `unchanged` and are not re-embedded. `/ready` rose from 532 to 1,537 chunks (97 web-page chunks plus 1,440 PDF chunks). The last two PDFs (111 chunks) remain unindexed because Gemini's free-tier embedding quota returned HTTP 429 on every retry; rerun the command after the quota resets. Each document is fully embedded before its upsert, so no partial documents were stored.
 
 Live `/chat` checks against the indexed PDFs answered two form questions (RSK 5.17 supporting documents; RSK 3.30 system ID and residency) with verified quotes from the official English PDFs. This is a small smoke sample, not a coverage or accuracy evaluation. All 39 backend tests pass, including embedding-cache reuse and validation.
+
+## Answer reliability fix on 2026-10-01
+
+Diagnosis: "How to file tax return in Iceland?" retrieved the official filing page as its best match (similarity 0.76), and the model produced a correct answer, but one of its two quotes left out the Markdown link around a heading (`### [Log in to complete your tax return](https://innskraning.rsk.is/)`) and exceeded the 600-character schema limit. Validation was all-or-nothing, so the verified claim was discarded too and the user saw an abstention.
+
+Changes in `backend/app/chat.py`:
+
+- Per-claim validation. Model output is parsed leniently and each claim is verified independently; a claim is dropped if any quote is missing from its source, shorter than 15 or longer than 1,000 characters, cites an unknown source, or the claim text contains links or citation markers. Only if no claim survives does the service abstain.
+- Cleaner excerpts. Before generation, lines that consist only of a link (site navigation menus) are removed, and link and image markup is reduced to plain text, so quotes can be copied exactly. Quote matching ignores link markup on both sides.
+- Noise filtering. Retrieval now requests 10 candidates, skips excerpts with too little text after cleaning (menus, empty table borders), and sends at most five to the model. Data tables such as the RSK 6.03 car valuation lists are kept.
+
+`RETRIEVAL_MIN_SCORE` stays at 0.55. Measured scores so far: on-topic English questions 0.68–0.78; unrelated questions (car insurance, VR union) about 0.60–0.61, above the threshold, so the model's abstention is what filters them. A higher threshold needs calibration against car-list and Icelandic questions first, so that relevant questions are not blocked; that measurement was cut short by the Gemini free-tier quota.
+
+Verification: 51 backend tests pass (12 new, covering partial answers, link-markup quotes, overlong quotes, menu/table-border filtering, and kept data tables). The backend container was rebuilt and `/ready` reports 1,537 chunks. Live `/chat` re-testing is pending because the Gemini free-tier quota returned HTTP 429 for every request at the time.
