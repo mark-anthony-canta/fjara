@@ -129,7 +129,7 @@ def prepare(archive, crawled_at=None):
     return records, skipped
 
 
-async def index_records(client, records, report_path):
+async def index_records(client, records, report_path, embedding_batch_size=1):
     import os
     model = os.getenv('GEMINI_EMBEDDING_MODEL', 'gemini-embedding-001')
     key('GEMINI_API_KEY')
@@ -153,8 +153,12 @@ async def index_records(client, records, report_path):
         else:
             # All embeddings must succeed before replacing any stored source.
             points = []
+            vectors = None
+            if embedding_batch_size > 1:
+                from .embedding_cache import embed_cached
+                vectors = await embed_cached(client, parts, embedding_batch_size)
             for i, part in enumerate(parts):
-                vector = await retry(lambda: embed(client, part))
+                vector = vectors[i] if vectors is not None else await retry(lambda: embed(client, part))
                 points.append({'id': str(uuid5(NAMESPACE_URL,
                     f"{record['url']}:{record['content_hash']}:{IMPORT_VERSION}:{model}:{i}")),
                     'vector': vector,
@@ -191,7 +195,7 @@ async def run(args):
         if not records:
             raise ValueError('No usable documents in this crawl')
         if args.index:
-            await index_records(client, records, Path('data/crawl-import-report.json'))
+            await index_records(client, records, Path('data/crawl-import-report.json'), args.embedding_batch_size)
         else:
             print('Dry run: no embeddings requested or database changes made. Add --index to import.')
 
@@ -203,6 +207,7 @@ if __name__ == '__main__':
     group.add_argument('--file')
     parser.add_argument('--crawled-at', help='ISO timestamp with timezone when export has no createdAt')
     parser.add_argument('--index', action='store_true')
+    parser.add_argument('--embedding-batch-size', type=int, choices=range(1,33), default=1)
     try:
         asyncio.run(run(parser.parse_args()))
     except (ValueError, RuntimeError, httpx.HTTPError, KeyError) as exc:

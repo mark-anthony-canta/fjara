@@ -105,6 +105,7 @@ References: [Firecrawl scrape API](https://docs.firecrawl.dev/api-reference/endp
 - Week 1 complete: all five pages indexed and `/ready` reports 60 chunks.
 - Week 2 complete: `/chat`, retrieval, generated answers, verified citation provenance, abstention, 20 passing local tests, and five passing Docker-based end-to-end smoke cases.
 - Week 3 complete: responsive Next.js interface, validated-answer progress streaming, clickable citations, Docker frontend, and passing local plus live Docker browser/proxy checks.
+- Extracted PDFs: 161 of 163 indexed into Qdrant (1,537 total chunks); two remaining PDFs await Gemini quota.
 - Week 4: retries, rate limits, authentication before public exposure, evaluation, scheduled refresh, and deployment.
 
 This development stack binds only to localhost. It is not a public production deployment.
@@ -169,3 +170,17 @@ Downloaded all 166 approved PDF URLs (1,004 pages). Firecrawl extracted 163 PDFs
 The account started at 903 credits and ended at 35: exactly 868 credits used, below the authorized 900-credit ceiling. Reported document charges match the balance change. Three PDFs totaling 136 pages (48, 44, and 44 pages) remain downloaded but unprocessed because no complete remaining document fits the task budget. The ledger retains 876 credits in conservative reservations, including the earlier rejected attempt. No jobs remain active.
 
 The ignored `backend/data/pdf-crawl/` directory contains original PDFs, per-document JSON, `ledger.json`, `manifest.json`, `verification.json`, `pending-pdfs.json`, and combined `extracted-pdfs.json`. The combined export passes the importer dry run: 163 valid documents, no skipped records, and 1,551 prospective chunks. No embeddings were requested and Qdrant was not modified. All 36 backend tests pass, including budget persistence, bounded batch selection, and verified charge reconciliation.
+
+### PDF indexing on 2026-09-30
+
+From `backend/`, the extracted PDFs are indexed with:
+
+```powershell
+..\.venv\Scripts\python.exe -m app.import_crawl --file data/pdf-crawl/extracted-pdfs.json --index --embedding-batch-size 16
+```
+
+`--embedding-batch-size` above 1 sends up to that many chunks per `batchEmbedContents` request and caches each vector under ignored `backend/data/embedding-cache/`, keyed by model, dimensions, task type, and chunk text. A rerun after a rate limit reuses cached vectors instead of paying for them again. HTTP 429 waits 60 seconds and 5xx/connection errors back off briefly, up to four attempts per batch; the import then stops and can be resumed with the same command. The default of 1 keeps the original one-request-per-chunk path.
+
+Status: 161 of 163 extracted PDFs are indexed. Documents already stored with a matching URL, content hash, import version, and embedding model are reported as `unchanged` and are not re-embedded. `/ready` rose from 532 to 1,537 chunks (97 web-page chunks plus 1,440 PDF chunks). The last two PDFs (111 chunks) remain unindexed because Gemini's free-tier embedding quota returned HTTP 429 on every retry; rerun the command after the quota resets. Each document is fully embedded before its upsert, so no partial documents were stored.
+
+Live `/chat` checks against the indexed PDFs answered two form questions (RSK 5.17 supporting documents; RSK 3.30 system ID and residency) with verified quotes from the official English PDFs. This is a small smoke sample, not a coverage or accuracy evaluation. All 39 backend tests pass, including embedding-cache reuse and validation.
