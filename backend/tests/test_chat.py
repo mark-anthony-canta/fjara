@@ -1,4 +1,5 @@
 import json
+import os
 import unittest
 from unittest.mock import AsyncMock, patch
 
@@ -54,6 +55,7 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaises(ValueError):
                     await answer_question(ChatRequest(question='VAT?'))
 
+    @patch.dict(os.environ, {'GENERAL_KNOWLEDGE_FALLBACK': 'false'})
     async def test_unapproved_sources_are_not_sent_to_generator(self):
         source = {**SOURCE, 'url': 'https://evil.example/'}
         with patch('app.chat.embed', AsyncMock(return_value=[0.1])), patch(
@@ -62,6 +64,7 @@ class PipelineTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.status, 'insufficient_evidence')
         self.assertEqual(req.await_count, 1)
 
+    @patch.dict(os.environ, {'GENERAL_KNOWLEDGE_FALLBACK': 'false'})
     async def test_empty_retrieval_skips_generation(self):
         with patch('app.chat.embed', AsyncMock(return_value=[0.1])), patch(
             'app.chat.request', AsyncMock(return_value={'result': {'points': []}})) as req:

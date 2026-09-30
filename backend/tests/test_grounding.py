@@ -1,4 +1,5 @@
 import json
+import os
 import unittest
 from unittest.mock import AsyncMock, patch
 
@@ -120,6 +121,7 @@ class RetrievalFilterTests(unittest.IsolatedAsyncioTestCase):
 
 
 class ExcludedSourceTests(unittest.IsolatedAsyncioTestCase):
+    @patch.dict(os.environ, {"GENERAL_KNOWLEDGE_FALLBACK": "false"})
     async def test_car_valuation_lists_are_filtered_and_skipped(self):
         self.assertEqual(len(EXCLUDED_SOURCES), 19)
         car = source(url="https://www.skatturinn.is/media/baeklingar/rsk_0603_2010.is.pdf")

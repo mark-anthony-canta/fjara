@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { readEvents } from "../lib/stream.mjs";
 
 type Citation = { id: number; url: string; title: string; quote: string; crawled_at: string };
-type Answer = { answer: string; status: "answered" | "insufficient_evidence"; citations: Citation[] };
+type Answer = { answer: string; status: "answered" | "general_knowledge" | "insufficient_evidence"; citations: Citation[]; general_answer?: string };
 type Turn = { id: string; question: string; language: "en" | "is"; result?: Answer; error?: string };
 const starters = ["What are the VAT rates in Iceland?", "Can a foreign company reclaim VAT?", "Where do I register a company?"];
 
@@ -50,6 +50,12 @@ export default function Home() {
     }
   }
 
+  function statusLabel(result?: Answer) {
+    if (result?.status === "answered") return result.general_answer ? "Sources checked · plus general knowledge" : "Sources checked";
+    if (result?.status === "general_knowledge") return "General knowledge";
+    return "Evidence first";
+  }
+
   function citationText(turn: Turn) {
     return turn.result!.answer.split(/(\[\d+\])/g).map((part, i) => {
       const number = /^\[(\d+)\]$/.exec(part);
@@ -80,8 +86,13 @@ export default function Home() {
         </section> : <section className="conversation" aria-label="Conversation">
           {turns.map(turn => <article className="turn" key={turn.id}>
             <div className="question-label">YOU</div><h2>{turn.question}</h2>
-            {(turn.result || turn.error) && <div className="answer-card"><div className="answer-label"><span className="mini-mark">f</span> FJARA <span>{turn.result?.status === "answered" ? "Sources checked" : "Evidence first"}</span></div>
-              {turn.result && <><div className="answer" lang={turn.language}>{citationText(turn)}</div>{turn.result.citations.length > 0 && <div className="citations"><h3>Explore the sources</h3>{turn.result.citations.map(c => <details id={`source-${turn.id}-${c.id}`} key={c.id}><summary><span className="source-index">{c.id}</span><span>{c.title}</span><span className="expand">＋</span></summary><blockquote>{c.quote}</blockquote><div className="source-meta"><span>Retrieved {new Date(c.crawled_at).toLocaleDateString("en-GB", { year: "numeric", month: "short", day: "numeric" })}</span><a href={c.url} target="_blank" rel="noopener noreferrer">Open official source ↗</a></div></details>)}</div>}</>}
+            {(turn.result || turn.error) && <div className="answer-card"><div className="answer-label"><span className="mini-mark">f</span> FJARA <span>{statusLabel(turn.result)}</span></div>
+              {turn.result && <>{turn.result.answer && <div className="answer" lang={turn.language}>{citationText(turn)}</div>}{turn.result.citations.length > 0 && <div className="citations"><h3>Explore the sources</h3>{turn.result.citations.map(c => <details id={`source-${turn.id}-${c.id}`} key={c.id}><summary><span className="source-index">{c.id}</span><span>{c.title}</span><span className="expand">＋</span></summary><blockquote>{c.quote}</blockquote><div className="source-meta"><span>Retrieved {new Date(c.crawled_at).toLocaleDateString("en-GB", { year: "numeric", month: "short", day: "numeric" })}</span><a href={c.url} target="_blank" rel="noopener noreferrer">Open official source ↗</a></div></details>)}</div>}
+                {turn.result.general_answer && <section className="general-answer" aria-label="General knowledge, not from official sources">
+                  <div className="general-label">GENERAL KNOWLEDGE · NOT FROM OFFICIAL SOURCES</div>
+                  <div className="general-text" lang={turn.language}>{turn.result.general_answer}</div>
+                  <p className="general-note">Not verified against Skatturinn guidance and may be out of date. Confirm before relying on it.</p>
+                </section>}</>}
               {turn.error && <div className="error" role="alert"><p>{turn.error}</p><button disabled={busy} onClick={() => ask(turn.question, turn.language)}>Retry question ↗</button></div>}
             </div>}
           </article>)}
@@ -93,7 +104,7 @@ export default function Home() {
         <label className="sr-only" htmlFor="question">Your accounting question</label>
         <textarea id="question" ref={input} value={question} maxLength={2000} disabled={busy} onChange={e => setQuestion(e.target.value)} placeholder="What would you like to understand?" rows={2} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); ask(question); } }}/>
         <div className="composer-bottom"><label className="language">Answer in <select aria-label="Answer language" value={language} disabled={busy} onChange={e => setLanguage(e.target.value as "en" | "is")}><option value="en">English</option><option value="is">Íslenska</option></select></label><div className="send-group"><span className="count">{question.length}/2000</span>{busy ? <button className="send stop" type="button" onClick={() => controller.current?.abort()}>Stop ■</button> : <button className="send" type="submit" disabled={!question.trim()}>Ask Fjara <span>↑</span></button>}</div></div>
-      </form><p className="footnote">Based on saved official guidance. Verify important decisions with a professional.<br/>Each question stands alone. Your conversation stays in this tab.</p></div>
+      </form><p className="footnote">Cited answers come from saved official guidance; anything marked general knowledge is unverified. Verify important decisions with a professional.<br/>Each question stands alone. Your conversation stays in this tab.</p></div>
     </main>
   </div>;
 }

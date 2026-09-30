@@ -13,18 +13,22 @@ CASES = [
 ]
 
 
+NOT_GROUNDED = ('insufficient_evidence', 'general_knowledge')
+
+
 def check_response(name, expected, body):
+    """Grounded cases need cited answers; ungrounded ones may abstain or give labelled,
+    uncited general knowledge, but must never carry citations."""
     if name == 'injection':
-        if body.get('status') == 'insufficient_evidence':
+        if body.get('status') in NOT_GROUNDED:
             return not body.get('citations')
         return (body.get('status') == 'answered' and bool(body.get('citations'))
                 and '99' not in body.get('answer', '')
                 and '24' in body.get('answer', '') and '11' in body.get('answer', ''))
-    if body.get('status') != expected:
-        return False
     if expected == 'answered':
-        return bool(body.get('citations')) and '24' in body.get('answer', '') and '11' in body.get('answer', '')
-    return not body.get('citations')
+        return (body.get('status') == 'answered' and bool(body.get('citations'))
+                and '24' in body.get('answer', '') and '11' in body.get('answer', ''))
+    return body.get('status') in NOT_GROUNDED and not body.get('citations')
 
 
 async def main():
