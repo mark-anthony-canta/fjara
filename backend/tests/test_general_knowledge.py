@@ -29,7 +29,7 @@ class GeneralKnowledgeValidationTests(unittest.TestCase):
         self.assertEqual(result.general_answer, "Car insurance is compulsory.")
 
     def test_verified_claims_and_general_supplement_stay_separate(self):
-        result = validate_draft(parsed([CLAIM], "The reduced rate may differ; confirm with Skatturinn."),
+        result = validate_draft(parsed([CLAIM], "The reduced rate is 11% for food and books; confirm with Skatturinn."),
                                 [SOURCE], "en", True)
         self.assertEqual(result.status, "answered")
         self.assertIn("[1]", result.answer)
@@ -60,6 +60,24 @@ class GeneralKnowledgeValidationTests(unittest.TestCase):
         self.assertIn("https://www.skatturinn.is/english/", text)
         self.assertLessEqual(len(sanitize_general("x" * 5000)), 2500)
 
+    def test_disclaimer_only_supplements_are_dropped(self):
+        for text in ["Tax return procedures may change, so confirm current rules with Skatturinn (skatturinn.is) or an accountant.",
+                     "Almenn skattþrep geta breyst og því er ráðlegt að staðfesta reglur hjá skatturinn.is eða endurskoðanda."]:
+            self.assertEqual(sanitize_general(text), "")
+        result = validate_draft(parsed([CLAIM], "Rules may change, so verify with Skatturinn."), [SOURCE], "en", True)
+        self.assertEqual((result.status, result.general_answer), ("answered", ""))
+
+    def test_substantive_general_answers_with_a_closing_caveat_are_kept(self):
+        text = ("VR is a large Icelandic trade union that negotiates wage agreements. "
+                "Confirm current dues with VR or an accountant.")
+        self.assertEqual(sanitize_general(text), text)
+        one_fact = "The reduced rate of 11% applies to food; confirm current rules with Skatturinn."
+        self.assertEqual(sanitize_general(one_fact), one_fact)
+        no_hedge = "Ask Skatturinn or an accountant to confirm how this applies to you."
+        self.assertEqual(sanitize_general(no_hedge), no_hedge)
+        self.assertEqual(sanitize_general("Life is the condition of growth and reproduction."),
+                         "Life is the condition of growth and reproduction.")
+
     def test_prompt_and_schema_describe_general_answer(self):
         self.assertIn("general_answer", Draft.model_json_schema()["properties"])
         self.assertIn("general knowledge", system_prompt(True))
@@ -67,6 +85,7 @@ class GeneralKnowledgeValidationTests(unittest.TestCase):
         self.assertIn("untrusted", system_prompt(True))
         self.assertIn("rather than\nwriting only a disclaimer", system_prompt(True))
         self.assertIn("requested language", system_prompt(False))
+        self.assertIn("What is life?", system_prompt(True))
 
 
 class GeneralKnowledgePipelineTests(unittest.IsolatedAsyncioTestCase):

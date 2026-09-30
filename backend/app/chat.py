@@ -132,8 +132,9 @@ adds them."""
 
 GENERAL_RULES = """Part 2, general_answer: add a short answer from your general knowledge that
 covers what the claims do not: the whole question when the excerpts do not help, or only
-the missing parts otherwise. Leave it empty when the claims already answer the question
-fully. Do not repeat the claims. Never contradict the excerpts; where your knowledge
+the missing parts otherwise. This includes general questions unrelated to Icelandic tax
+(for example "What is life?"): answer them briefly; only harmful requests are declined.
+Leave it empty when the claims already answer the question fully. Do not repeat the claims. Never contradict the excerpts; where your knowledge
 differs from them, follow the excerpts. Tax rates, thresholds and deadlines change: when
 you give Icelandic tax specifics from general knowledge, say they may be out of date and
 should be confirmed with Skatturinn (skatturinn.is) or an accountant. Do not predict
@@ -162,13 +163,27 @@ def system_prompt(allow_general: bool) -> str:
 SYSTEM = system_prompt(False)
 
 
+DISCLAIMER_VERB = re.compile(r"confirm|verif|check|consult|staðfest|sannreyn|leita", re.I)
+DISCLAIMER_TARGET = re.compile(r"skatturinn|accountant|tax authorit|endursko|bókar|sérfræð", re.I)
+DISCLAIMER_HEDGE = re.compile(r"chang|subject to|may differ|vary|varies|out of date|breyt|breyst|úrelt", re.I)
+
+
+def is_disclaimer_only(text: str) -> bool:
+    """A lone 'confirm with Skatturinn/an accountant' sentence adds nothing the UI does not say."""
+    sentences = [part for part in re.split(r"(?<=[.!?])\s+", text.strip()) if part]
+    return (len(sentences) <= 1 and not re.search(r"\d", text)
+            and bool(DISCLAIMER_VERB.search(text)) and bool(DISCLAIMER_TARGET.search(text))
+            and bool(DISCLAIMER_HEDGE.search(text)))
+
+
 def sanitize_general(text: str) -> str:
     """General knowledge may not carry citation markers or off-site links."""
     text = re.sub(r"\[\d+\]", "", text or "")
     text = re.sub(r"https?://(?!(?:www\.)?skatturinn\.is\b)\S+", "", text)
     text = re.sub(r"[ \t]{2,}", " ", text)
     text = re.sub(r"[ \t]+\n", "\n", re.sub(r"\n{3,}", "\n\n", text)).strip()
-    return text[:MAX_GENERAL_CHARS].strip()
+    text = text[:MAX_GENERAL_CHARS].strip()
+    return "" if is_disclaimer_only(text) else text
 
 
 def abstain(language: str) -> ChatResponse:
