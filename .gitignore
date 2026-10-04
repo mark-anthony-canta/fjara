@@ -11,3 +11,5 @@ node_modules/
 *.tsbuildinfo
 test-results/
 playwright-report/
+deploy/caddy.env
+deploy/snapshots/

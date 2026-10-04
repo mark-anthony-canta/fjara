@@ -1,0 +1,30 @@
+# Server overlay: adds Caddy (HTTPS certificate + password prompt) in front of the
+# frontend, and restarts every service automatically after a reboot.
+# Run from the repository root:
+#   docker compose -f compose.yaml -f deploy/compose.prod.yaml up -d --build
+# Paths below are relative to the repository root (Compose's project directory).
+services:
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    env_file: deploy/caddy.env
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+  frontend:
+    restart: unless-stopped
+  backend:
+    restart: unless-stopped
+  qdrant:
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -1,0 +1,13 @@
+# Public entry point. Caddy obtains and renews the HTTPS certificate for
+# SITE_ADDRESS automatically and asks every visitor for the shared password.
+# Only the frontend is exposed; the backend and Qdrant stay on the private
+# Docker network and on 127.0.0.1.
+{$SITE_ADDRESS} {
+	basic_auth {
+		{$BASIC_AUTH_USER} {$BASIC_AUTH_HASH}
+	}
+	reverse_proxy frontend:3000 {
+		# Pass streamed answer events through immediately.
+		flush_interval -1
+	}
+}
